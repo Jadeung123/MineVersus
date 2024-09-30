@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Single Player Minesweeper</title>
+    <link rel="stylesheet" href="App.css">
+</head>
+<body>
+    <div id="game">
+        <h1>Single Player Minesweeper</h1>
+
+        <div class="controls">
+            <button onclick="setDifficulty(8, 8, 0.15)">Easy</button>
+            <button onclick="setDifficulty(13, 13, 0.20)">Normal</button>
+            <button onclick="setDifficulty(18, 18, 0.25)">Hard</button>
+            <button onclick="showCustom()">Custom</button>
+            <button id="flag-button" onclick="toggleFlagMode()">🚩 Flag Mode</button>
+            <button onclick="useHint()">💡 Hint</button>
+            <button onclick="resetGame()">Reset</button>
+        </div>
+
+        <div id="customSettings" style="display:none;">
+            <label>
+                Width:
+                <input type="number" id="customWidth" value="10" min="1" max="50">
+            </label>
+            <label>
+                Height:
+                <input type="number" id="customHeight" value="10" min="1" max="50">
+            </label>
+            <label>
+                Bombs:
+                <input type="number" id="customBombs" value="20" min="1" max="1000">
+            </label>
+            <button onclick="startCustomGame()">Start Custom Game</button>
+        </div>
+
+        <div id="grid-container">
+            <table id="grid"></table>
+        </div>
+
+        <div id="win-lose-message"></div>
+
+        <button id="back-button" onclick="goBackToMenu()"></button>
+    </div>
+
+    <script>
+        var grid = document.getElementById("grid");
+        var isFirstClick = true;
+        var gameOver = false;
+        var flagMode = false;
+        var width, height, bombs, minePositions = [];
+        var clearedCells = 0;
+        var totalNonMines = 0;
+        var gameLost = false;
+
+        window.onload = function() {
+            setDifficulty(8, 8, 0.15);
+        };
+
+        function setDifficulty(w, h, bombPercent) {
+            width = w;
+            height = h;
+            bombs = Math.floor((width * height) * bombPercent);
+            totalNonMines = width * height - bombs;
+            generateGrid();
+        }
+
+        function showCustom() {
+            document.getElementById("customSettings").style.display = "block";
+        }
+
+        function startCustomGame() {
+            width = document.getElementById("customWidth").value;
+            height = document.getElementById("customHeight").value;
+            bombs = document.getElementById("customBombs").value;
+            totalNonMines = width * height - bombs;
+            generateGrid();
+        }
+
+        function generateGrid() {
+            grid.innerHTML = '';
+            minePositions = [];
+            clearedCells = 0;
+            gameOver = false;
+            gameLost = false;
+            isFirstClick = true;
+
+            for (var i = 0; i < height; i++) {
+                var row = grid.insertRow(i);
+                for (var j = 0; j < width; j++) {
+                    var cell = row.insertCell(j);
+                    cell.onclick = function (e) { handleLeftClick(this); };
+                    cell.oncontextmenu = function (e) { handleRightClick(this, e); return false; };
+                    var mine = document.createAttribute("data-mine");
+                    mine.value = "false";
+                    cell.setAttributeNode(mine);
+                }
+            }
+            placeBombs();
+        }
+
+        function placeBombs() {
+            var placedBombs = 0;
+            while (placedBombs < bombs) {
+                var row = Math.floor(Math.random() * height);
+                var col = Math.floor(Math.random() * width);
+                if (!minePositions.some(pos => pos.row === row && pos.col === col)) {
+                    minePositions.push({ row: row, col: col });
+                    var cell = grid.rows[row].cells[col];
+                    cell.setAttribute("data-mine", "true");
+                    placedBombs++;
+                }
+            }
+        }
+
+        function handleLeftClick(cell) {
+            if (gameOver || cell.classList.contains('clicked')) {
+                // Check if the surrounding flags match the mine count when clicking on an already opened cell
+                var mineCount = countMines(cell);
+                var flagCount = countFlagsAndHintsAround(cell);
+                if (flagCount === mineCount) {
+                    if (checkIfAllFlagsCorrect(cell)) {
+                        var cellRow = cell.parentNode.rowIndex;
+                        var cellCol = cell.cellIndex;
+                        revealAdjacentCells(cellRow, cellCol);
+                    } else {
+                        gameOver = true;
+                        document.getElementById("grid-container").classList.add('shake');
+                        setTimeout(() => document.getElementById("grid-container").classList.remove('shake'), 500);
+                        revealIncorrectFlags();
+                    }
+                }
+                return;
+            }
+
+            if (flagMode) {
+                flagCell(cell);
+            } else {
+                clickCell(cell);
+            }
+        }
+
+        function handleRightClick(cell, e) {
+            e.preventDefault();
+            if (flagMode) {
+                clickCell(cell);
+            } else {
+                flagCell(cell);
+            }
+        }
+
+        function clickCell(cell) {
+            if (gameOver || cell.classList.contains('clicked') || cell.classList.contains('hint-flag') || cell.classList.contains('flag')) return;
+
+            cell.classList.add('clicked', 'revealed')
+
+            if (isFirstClick) {
+                isFirstClick = false;
+                if (cell.getAttribute("data-mine") === "true") {
+                    cell.setAttribute("data-mine", "false");
+                    placeBombs();
+                }
+            }
+
+            cell.className = "clicked";
+            if (cell.getAttribute("data-mine") == "true") {
+                document.getElementById("grid-container").classList.add('shake');
+                setTimeout(() => document.getElementById("grid-container").classList.remove('shake'), 500);
+                cell.classList.add('mine');
+                gameOver = true;
+                revealIncorrectFlags();
+            } else {
+                var mineCount = countMines(cell);
+                cell.innerHTML = mineCount > 0 ? mineCount : "";
+                cell.classList.add(`cell-${mineCount}`);
+                clearedCells++;
+
+                if (clearedCells === totalNonMines) {
+                    revealIncorrectFlags();
+                }
+
+                if (mineCount === 0) {
+                    var cellRow = cell.parentNode.rowIndex;
+                    var cellCol = cell.cellIndex;
+                    revealAdjacentCells(cellRow, cellCol);
+                }
+            }
+        }
+
+        function countMines(cell) {
+            var row = cell.parentNode.rowIndex;
+            var col = cell.cellIndex;
+            var mineCount = 0;
+
+            for (var i = Math.max(row - 1, 0); i <= Math.min(row + 1, height - 1); i++) {
+                for (var j = Math.max(col - 1, 0); j <= Math.min(col + 1, width - 1); j++) {
+                    if (grid.rows[i].cells[j].getAttribute("data-mine") === "true") {
+                        mineCount++;
+                    }
+                }
+            }
+            return mineCount;
+        }
+
+        function countFlagsAndHintsAround(cell) {
+            var row = cell.parentNode.rowIndex;
+            var col = cell.cellIndex;
+            var flagCount = 0;
+
+            for (var i = Math.max(row - 1, 0); i <= Math.min(row + 1, height - 1); i++) {
+                for (var j = Math.max(col - 1, 0); j <= Math.min(col + 1, width - 1); j++) {
+                    var surroundingCell = grid.rows[i].cells[j];
+                    if (surroundingCell.classList.contains('flag') || surroundingCell.classList.contains('hint-flag')) {
+                        flagCount++;
+                    }
+                }
+            }
+            return flagCount;
+        }
+
+        function checkIfAllFlagsCorrect(cell) {
+            var row = cell.parentNode.rowIndex;
+            var col = cell.cellIndex;
+            var allCorrect = true;
+
+            for (var i = Math.max(row - 1, 0); i <= Math.min(row + 1, height - 1); i++) {
+                for (var j = Math.max(col - 1, 0); j <= Math.min(col + 1, width - 1); j++) {
+                    var surroundingCell = grid.rows[i].cells[j];
+                    if (surroundingCell.classList.contains('flag') && surroundingCell.getAttribute("data-mine") !== "true") {
+                        allCorrect = false;
+                    }
+                }
+            }
+            return allCorrect;
+        }
+
+        function revealAdjacentCells(row, col) {
+            for (var i = Math.max(row - 1, 0); i <= Math.min(row + 1, height - 1); i++) {
+                for (var j = Math.max(col - 1, 0); j <= Math.min(col + 1, width - 1); j++) {
+                    var cell = grid.rows[i].cells[j];
+                    if (!cell.classList.contains('clicked') && !cell.classList.contains('flag')) {
+                        clickCell(cell);
+                    }
+                }
+            }
+        }
+
+        function revealIncorrectFlags() {
+            for (let i = 0; i < grid.rows.length; i++) {
+                for (let j = 0; j < grid.rows[i].cells.length; j++) {
+                    let cell = grid.rows[i].cells[j];
+
+                    if (cell.classList.contains('flag') && cell.getAttribute("data-mine") !== "true") {
+                        cell.classList.add('wrong-flag');
+                    } else if (cell.getAttribute("data-mine") === "true" && !cell.classList.contains('flag')) {
+                        cell.classList.add('mine');
+                    }
+                }
+            }
+        }
+
+        function flagCell(cell, e) {
+            if (gameOver || cell.classList.contains('hint-flag') || cell.classList.contains('clicked')) return; // Prevent flagging if the cell is revealed or a hint
+
+            if (cell.className === "flag") {
+                cell.className = "";
+                cell.innerHTML = "";
+            } else {
+                cell.className = "flag";
+                cell.innerHTML = "🚩";
+            }
+        }
+
+        function revealAllMines() {
+            minePositions.forEach(function (pos) {
+                var cell = grid.rows[pos.row].cells[pos.col];
+                if (!cell.classList.contains('clicked')) {
+                    cell.className = "mine";
+                }
+            });
+        }
+
+        function useHint() {
+            var availableBombs = minePositions.filter(pos => {
+                var cell = grid.rows[pos.row].cells[pos.col];
+                return !cell.classList.contains("flag") && !cell.classList.contains("hint-flag");
+            });
+
+            if (availableBombs.length > 0) {
+                var randomBomb = availableBombs[Math.floor(Math.random() * availableBombs.length)];
+                var cell = grid.rows[randomBomb.row].cells[randomBomb.col];
+                cell.className = "hint-flag";
+                cell.innerHTML = "💡";
+                cell.onclick = null;
+            }
+        }
+
+        function toggleFlagMode() {
+            flagMode = !flagMode;
+            document.getElementById("flag-button").style.backgroundColor = flagMode ? "#FFD700" : "";
+        }
+
+        function resetGame() {
+            generateGrid();
+        }
+
+        function goBackToMenu() {
+            window.location.href = "index.html";
+        }
+    </script>
+</body>
+</html>
