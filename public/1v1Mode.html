@@ -1,0 +1,575 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Minesweeper 1v1 Mode</title>
+    <link rel="stylesheet" href="App.css">
+</head>
+<body>
+    <div id="game">
+        <div id="findingPlayer">Finding other player...</div>
+
+        <!-- Health Bars for 1v1 -->
+        <div id="health-bar">
+            <div id="player-health">
+                <p class="health-label">Player Health</p>
+                <div id="player-health-text">100 HP</div>
+            </div>
+            <div id="opponent-health">
+                <p class="health-label">Opponent Health</p>
+                <div id="opponent-health-text">100 HP</div>
+            </div>
+        </div>
+
+        <!-- Timer for 1v1 -->
+        <div id="timer">Time: 00:00</div>
+
+        <!-- Round Indicator -->
+        <div id="round-indicator">Round: 1</div>
+
+        <div id="grid-container">
+            <div>
+                <table id="grid"></table>
+            </div>
+        </div>
+
+        <button id="hint-button" onclick="useHint()">Use Hint (3 left)</button>
+        <button id="heal-button" onclick="useHeal()">Use Heal (2 left)</button>
+        <button id="toggle-flag-button" onclick="toggleFlagMode()">🚩 Flag Mode</button>
+        <div id="win-lose-message"></div>
+
+        <button id="back-button" onclick="goBackToMenu();"></button>
+    </div>
+
+    <script>
+        var grid = document.getElementById("grid");
+        var isFirstClick = true;
+        var gameOver = false;
+        var width = 5;
+        var height = 5;
+        var socket;
+        var playerHealth = 100;
+        var opponentHealth = 100;
+        var timer;
+        var startTime;
+        var round = 1;
+        var roundIncreased = false;
+        var minePositions = [];
+        var clearedCells = 0;
+        var bombs = Math.floor((width * height) * 0.20);
+        var totalNonMines = width * height - bombs;
+        var hintUsed = 0;
+        const maxHints = 3;
+        var healUsed = 0;
+        const maxHeals = 2;
+        const healAmount = 25;
+        var boardCleared = false;
+        var flagMode = false;
+
+        function toggleFlagMode() {
+            flagMode = !flagMode;
+            document.getElementById("toggle-flag-button").innerHTML = flagMode ? "Flag Mode Active" : "🚩 Flag Mode";
+        }
+
+        function updateHealth(damage, isPlayer) {
+            if (isPlayer) {
+                playerHealth -= damage;
+                playerHealth = Math.max(playerHealth, 0);
+                updateHealButton();
+                var healthBar = document.getElementById("player-health");
+                healthBar.style.width = (playerHealth * 3) + 'px';
+                healthBar.style.backgroundColor = playerHealth > 50 ? 'green' : (playerHealth > 20 ? 'orange' : 'red');
+                document.getElementById("player-health-text").innerText = playerHealth + " HP";
+                if (playerHealth === 0) {
+                    displayGameOverMessage("You Lost!");
+                    gameOver = true;
+                    stopTimer();
+                    socket.send(JSON.stringify({ type: "gameOver" }));
+                    setTimeout(redirectToMenu, 3000);
+                }
+            } else {
+                opponentHealth -= damage;
+                opponentHealth = Math.max(opponentHealth, 0);
+                var healthBar = document.getElementById("opponent-health");
+                healthBar.style.width = (opponentHealth * 3) + 'px';
+                healthBar.style.backgroundColor = opponentHealth > 50 ? 'blue' : (opponentHealth > 20 ? 'purple' : 'red');
+                document.getElementById("opponent-health-text").innerText = opponentHealth + " HP";
+                if (opponentHealth === 0) {
+                    displayGameOverMessage("You Win!");
+                    gameOver = true;
+                    stopTimer();
+                    setTimeout(redirectToMenu, 3000);
+                }
+            }
+        }
+
+        function updateHealButton() {
+            const healButton = document.getElementById("heal-button");
+            if (playerHealth === 100 || healUsed >= maxHeals) {
+                healButton.disabled = true;
+            } else {
+                healButton.disabled = false;
+            }
+        }
+
+        function useHeal() {
+            if (healUsed >= maxHeals || playerHealth === 100) {
+                return;
+            }
+            playerHealth = Math.min(playerHealth + healAmount, 100);
+            document.getElementById("player-health").style.width = (playerHealth * 3) + 'px';
+            document.getElementById("player-health-text").innerText = playerHealth + " HP";
+
+            healUsed++;
+            document.getElementById("heal-button").innerHTML = `Use Heal (${maxHeals - healUsed} left)`;
+
+            updateHealButton();
+        }
+
+        function startTimer() {
+            stopTimer();
+            startTime = Date.now();
+            const timerElement = document.getElementById("timer");
+
+            timer = setInterval(() => {
+                const elapsed = Math.floor((Date.now() - startTime) / 1000);
+                const minutes = Math.floor(elapsed / 60);
+                const seconds = elapsed % 60;
+
+                timerElement.innerHTML = `Time: ${minutes}:${seconds < 10 ? '0' : ''}${seconds}`;
+                timerElement.style.transition = "color 0.5s";
+                timerElement.style.color = seconds % 2 === 0 ? 'green' : 'blue';
+            }, 1000);
+        }
+
+        function stopTimer() {
+            clearInterval(timer);
+        }
+
+        function updateRound() {
+            round += 1;
+            document.getElementById("round-indicator").innerText = "Round: " + round;
+            roundIncreased = false;
+        }
+
+        function setRound(newRound) {
+            round = newRound;
+            document.getElementById("round-indicator").innerText = "Round: " + round;
+            roundIncreased = false;
+        }
+
+        function start1v1() {
+            document.getElementById("findingPlayer").style.display = "block";
+            document.getElementById("toggle-flag-button").style.display = "none";
+            document.getElementById("grid").style.display = "none";
+            document.getElementById("health-bar").style.display = "none";
+            document.getElementById("hint-button").style.display = "none";
+            document.getElementById("heal-button").style.display = "none";
+
+            socket = new WebSocket('ws://localhost:3000');
+            socket.onopen = () => {
+                socket.send(JSON.stringify({ type: "joinQueue" }));
+            };
+
+            socket.onmessage = (message) => {
+                const data = JSON.parse(message.data);
+
+                if (data.type === "matchFound") {
+                    document.getElementById("findingPlayer").style.display = "none";
+                    document.getElementById("toggle-flag-button").style.display = "block";
+                    document.getElementById("grid").style.display = "table";
+                    document.getElementById("health-bar").style.display = "flex";
+                    document.getElementById("timer").style.display = "block";
+                    document.getElementById("round-indicator").style.display = "block";
+                    document.getElementById("hint-button").style.display = "block";
+                    document.getElementById("heal-button").style.display = "block";
+                    startTimer();
+                    setRound(data.round);
+                    generateGrid();
+                }
+
+                if (data.type === "move") {
+                    const cell = grid.rows[data.row].cells[data.col];
+                    if (data.action === "click") {
+                        clickCell(cell);
+                    } else if (data.action === "flag") {
+                        flagCell(cell);
+                    }
+                }
+
+                if (data.type === "roundLost") {
+                    alert(`You lost this round and took ${data.damage} damage.`);
+                    updateHealth(data.damage, true);
+                    stopTimer();
+                    updateRound();
+                    socket.send(JSON.stringify({ type: "nextRound", round: round }));
+                    if (playerHealth > 0) {
+                        nextRound(data.boardSize);
+                    }
+                }
+
+                if (data.type === "roundWon") {
+                    alert(`You won the round! Your opponent took ${data.damage} damage.`);
+                    updateHealth(data.damage, false);
+                    stopTimer();
+                    updateRound();
+                    socket.send(JSON.stringify({ type: "nextRound", round: round }));
+                    if (opponentHealth > 0) {
+                        nextRound(data.boardSize);
+                    }
+                }
+
+                if (data.type === "applyDamage") {
+                    updateHealth(data.damage, true);
+                }
+
+                if (data.type === "nextRound") {
+                    setRound(data.round);
+                    nextRound(data.boardSize);
+                }
+
+                if (data.type === "opponentLeft") {
+                    alert("Your opponent has disconnected. You win!");
+                    redirectToMenu();
+                }
+            };
+        }
+
+        function goBackToMenu() {
+            document.getElementById("game").style.display = "none";
+            document.getElementById("win-lose-message").style.display = "none";
+            if (socket) {
+                socket.close();
+            }
+            redirectToMenu();
+        }
+
+        function redirectToMenu() {
+            window.location.href = "index.html";
+        }
+
+        function fadeOutIn(callback) {
+            const gridContainer = document.getElementById("grid-container");
+            gridContainer.style.opacity = 0;
+            setTimeout(() => {
+                callback();
+                gridContainer.style.opacity = 1;
+            }, 500);
+        }
+
+        function nextRound(newBoardSize) {
+            width = height = newBoardSize;
+            bombs = Math.floor((width * height) * (0.20 + (round * 0.02)));
+            clearedCells = 0;
+            totalNonMines = width * height - bombs;
+            roundIncreased = false;
+            boardCleared = false;
+
+            // Dynamically move the grid-container down as it expands
+            const gridContainer = document.getElementById("grid-container");
+            gridContainer.style.marginTop = (newBoardSize * 12) + "px";
+
+            const buttons = document.querySelectorAll('#hint-button, #heal-button, #toggle-flag-button');
+            buttons.forEach(button => {
+                button.style.left = (400 - newBoardSize * 10) + "px";
+            });
+
+            fadeOutIn(() => {
+                generateGrid();
+            });
+            startTimer();
+        }
+
+        function generateGrid() {
+            isFirstClick = true;
+            gameOver = false;
+            minePositions = [];
+            grid.innerHTML = "";
+            for (var i = 0; i < height; i++) {
+                row = grid.insertRow(i);
+                for (var j = 0; j < width; j++) {
+                    cell = row.insertCell(j);
+                    cell.onclick = function (e) { handleLeftClick(this, e); };
+                    cell.oncontextmenu = function (e) { e.preventDefault(); handleRightClick(this, e); return false; };
+                    var mine = document.createAttribute("data-mine");
+                    mine.value = "false";
+                    cell.setAttributeNode(mine);
+                    cell.classList.remove('clicked');
+                }
+            }
+            placeBombs();
+        }
+
+        function placeBombs() {
+            var placedBombs = 0;
+            while (placedBombs < bombs) {
+                var row = Math.floor(Math.random() * height);
+                var col = Math.floor(Math.random() * width);
+                if (!minePositions.some(pos => pos.row === row && pos.col === col)) {
+                    minePositions.push({ row: row, col: col });
+                    var cell = grid.rows[row].cells[col];
+                    cell.setAttribute("data-mine", "true");
+                    placedBombs++;
+                }
+            }
+        }
+
+        function handleLeftClick(cell) {
+            if (cell.classList.contains('clicked')) {
+                const mineCount = countMines(cell);
+                const flagCount = countFlagsAndHintsAround(cell);
+
+                if (flagCount === mineCount) {
+                    if (!checkIfAllFlagsCorrect(cell)) {
+                        document.getElementById("grid-container").classList.add('shake');
+                        setTimeout(() => document.getElementById("grid-container").classList.remove('shake'), 500);
+                        cell.className = "mine";
+                        alert("Round Over! You placed an incorrect flag.");
+                        gameOver = true;
+                        stopTimer();
+                        socket.send(JSON.stringify({ type: "roundLost", time: (new Date()) - startTime }));
+                    } else {
+                        // If all flags are correct, reveal surrounding cells
+                        revealSurroundingCells(cell.parentNode.rowIndex, cell.cellIndex);
+                    }
+                }
+                return;
+            }
+
+            if (flagMode) {
+                flagCell(cell);
+            } else {
+                clickCell(cell);
+            }
+        }
+
+
+        function countFlagsAndHintsAround(cell) {
+            var row = cell.parentNode.rowIndex;
+            var col = cell.cellIndex;
+            var flagCount = 0;
+            for (var i = Math.max(row - 1, 0); i <= Math.min(row + 1, height - 1); i++) {
+                for (var j = Math.max(col - 1, 0); j <= Math.min(col + 1, width - 1); j++) {
+                    var surroundingCell = grid.rows[i].cells[j];
+                    if (surroundingCell.classList.contains('flag') || surroundingCell.classList.contains('hint-flag')) {
+                        flagCount++;
+                    }
+                }
+            }
+            return flagCount;
+        }
+
+        function checkIfAllFlagsCorrect(cell) {
+            var row = cell.parentNode.rowIndex;
+            var col = cell.cellIndex;
+            var allCorrect = true;
+            for (var i = Math.max(row - 1, 0); i <= Math.min(row + 1, height - 1); i++) {
+                for (var j = Math.max(col - 1, 0); j <= Math.min(col + 1, width - 1); j++) {
+                    var surroundingCell = grid.rows[i].cells[j];
+                    if (surroundingCell.classList.contains('flag') && surroundingCell.getAttribute("data-mine") !== "true") {
+                        allCorrect = false;
+                    }
+                }
+            }
+            return allCorrect;
+        }
+
+        function handleRightClick(cell, e) {
+            if (flagMode) {
+                clickCell(cell, e);
+            } else {
+                flagCell(cell, e);
+            }
+        }
+
+        function clickCell(cell, e) {
+            if (gameOver || cell.classList.contains('clicked') || cell.classList.contains('hint-flag') || cell.classList.contains('flag')) return;
+
+            // Prevent clicking on flagged cells
+            if (cell.classList.contains('flag')) return;
+
+            cell.classList.add('clicked', 'revealed');
+
+            if (isFirstClick) {
+                isFirstClick = false;
+                if (cell.getAttribute("data-mine") === "true") {
+                    cell.setAttribute("data-mine", "false");
+                    addMines();
+                }
+            }
+
+            cell.className = "clicked";
+            if (cell.getAttribute("data-mine") == "true") {
+                document.getElementById("grid-container").classList.add('shake');
+                setTimeout(() => document.getElementById("grid-container").classList.remove('shake'), 500);
+                cell.className = "mine";
+                alert("Round Over! You clicked on a mine.");
+                gameOver = true;
+                stopTimer();
+                socket.send(JSON.stringify({ type: "roundLost", time: (new Date()) - startTime }));
+            } else {
+                var mineCount = countMines(cell);
+                cell.innerHTML = mineCount > 0 ? mineCount : "";
+                clearedCells++;
+
+                if (mineCount > 0) {
+                    cell.classList.add(`cell-${mineCount}`);
+                }
+                
+                if (clearedCells === totalNonMines) {
+                    boardCleared = true;
+                    socket.send(JSON.stringify({ type: "boardCleared" }));
+                    setTimeout(() => nextRound(width + 1), 2000);
+                }
+
+                var cellRow = cell.parentNode.rowIndex;
+                var cellCol = cell.cellIndex;
+                socket.send(JSON.stringify({
+                    type: "move",
+                    row: cellRow,
+                    col: cellCol,
+                    action: "click"
+                }));
+
+                if (mineCount === 0) {
+                    revealAdjacentCells(cellRow, cellCol);
+                } else if (canRevealSurroundingCells(cell)) {
+                    revealSurroundingCells(cell);
+                }
+            }
+        }
+
+
+        function canRevealSurroundingCells(cell) {
+            var flaggedCount = 0;
+            var row = cell.parentNode.rowIndex;
+            var col = cell.cellIndex;
+
+            for (var i = Math.max(row - 1, 0); i <= Math.min(row + 1, height - 1); i++) {
+                for (var j = Math.max(col - 1, 0); j <= Math.min(col + 1, width - 1); j++) {
+                    var surroundingCell = grid.rows[i].cells[j];
+                    if (surroundingCell.classList.contains("flag") || surroundingCell.classList.contains("hint-flag")) {
+                        flaggedCount++;
+                    }
+                }
+            }
+
+            var mineCount = countMines(cell);
+            return flaggedCount === mineCount;
+        }
+
+        function revealSurroundingCells(row, col) {
+            for (var i = Math.max(row - 1, 0); i <= Math.min(row + 1, height - 1); i++) {
+                for (var j = Math.max(col - 1, 0); j <= Math.min(col + 1, width - 1); j++) {
+                    var cell = grid.rows[i].cells[j];
+                    if (!cell.classList.contains('clicked') && !cell.classList.contains('flag')) {
+                        clickCell(cell);
+                    }
+                }
+            }
+        }
+
+        function revealAdjacentCells(row, col) {
+            for (var i = Math.max(row - 1, 0); i <= Math.min(row + 1, height - 1); i++) {
+                for (var j = Math.max(col - 1, 0); j <= Math.min(col + 1, width - 1); j++) {
+                    var cell = grid.rows[i].cells[j];
+                    if (!cell.classList.contains('clicked') && !cell.classList.contains('flag')) {
+                        clickCell(cell);
+                    }
+                }
+            }
+        }
+
+        function countMines(cell) {
+            var row = cell.parentNode.rowIndex;
+            var col = cell.cellIndex;
+            var mineCount = 0;
+            for (var i = Math.max(row - 1, 0); i <= Math.min(row + 1, height - 1); i++) {
+                for (var j = Math.max(col - 1, 0); j <= Math.min(col + 1, width - 1); j++) {
+                    if (grid.rows[i].cells[j].getAttribute("data-mine") === "true") {
+                        mineCount++;
+                    }
+                }
+            }
+            return mineCount;
+        }
+
+        function revealIncorrectFlags() {
+            for (let i = 0; i < grid.rows.length; i++) {
+                for (let j = 0; j < grid.rows[i].cells.length; j++) {
+                    let cell = grid.rows[i].cells[j];
+                    if (cell.classList.contains('flag') && cell.getAttribute("data-mine") !== "true") {
+                        cell.classList.add('wrong-flag');
+                    } else if (cell.getAttribute("data-mine") === "true" && !cell.classList.contains('flag')) {
+                        cell.classList.add('mine');
+                    }
+                }
+            }
+        }
+
+        function flagCell(cell, e) {
+            // Prevent flagging if the cell is already revealed, a hint, or the game is over
+            if (gameOver || cell.classList.contains('hint-flag') || cell.classList.contains('clicked')) return;
+
+            if (cell.className === "flag") {
+                cell.className = "";
+                cell.innerHTML = "";
+                cell.style.pointerEvents = "auto";
+            } else {
+                cell.className = "flag";
+                cell.innerHTML = "🚩";
+                cell.style.pointerEvents = "auto";
+            }
+
+            // Notify the server about the flag move
+            var cellRow = cell.parentNode.rowIndex;
+            var cellCol = cell.cellIndex;
+            socket.send(JSON.stringify({
+                type: "move",
+                row: cellRow,
+                col: cellCol,
+                action: "flag"
+            }));
+        }
+
+
+        function useHint() {
+            if (hintUsed >= maxHints) {
+                alert("You have used all your hints!");
+                return;
+            }
+
+            var availableBombs = minePositions.filter(pos => {
+                var cell = grid.rows[pos.row].cells[pos.col];
+                return !cell.classList.contains("flag") && !cell.classList.contains("hint-flag");
+            });
+
+            if (availableBombs.length > 0) {
+                var randomBomb = availableBombs[Math.floor(Math.random() * availableBombs.length)];
+                var cell = grid.rows[randomBomb.row].cells[randomBomb.col];
+                cell.className = "hint-flag";
+                cell.innerHTML = "💡";
+                cell.onclick = null;
+
+                hintUsed++;
+                document.getElementById("hint-button").innerHTML = `Use Hint (${maxHints - hintUsed} left)`;
+
+                if (hintUsed >= maxHints) {
+                    document.getElementById("hint-button").disabled = true;
+                }
+            } else {
+                alert("No more bombs to flag!");
+            }
+        }
+
+        function displayGameOverMessage(message) {
+            var messageBox = document.getElementById("win-lose-message");
+            messageBox.innerText = message;
+            messageBox.style.display = "block";
+        }
+
+        start1v1();
+    </script>
+</body>
+</html>

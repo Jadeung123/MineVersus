@@ -1,0 +1,286 @@
+.board {
+  display: grid;
+  grid-template-columns: repeat(10, 30px);
+  gap: 2px;
+}
+
+/* Add flip animation */
+@keyframes flip {
+  0% {
+    transform: rotateX(0deg);
+  }
+  100% {
+    transform: rotateX(180deg);
+  }
+}
+
+.cell {
+  width: 30px;
+  height: 30px;
+  background-color: lightgray;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  cursor: pointer;
+  transition: transform 0.5s;
+  transform-style: preserve-3d;
+  backface-visibility: hidden; /* Make the back invisible when flipped */
+}
+
+.cell.revealed {
+  background-color: white;
+  animation: flip 0.5s forwards; /* Ensure the flip animation completes */
+}
+
+/* Static flag */
+.flag {
+  background-color: transparent;  /* Remove yellow background */
+  color: red;
+  font-weight: bold;
+  font-size: 1.5em; /* Increase flag size for better visibility */
+}
+
+.wrong-flag {
+  background-color: yellow;
+  color: red;
+  font-weight: bold;
+}
+
+.mine {
+  background-color: transparent; /* No background for the mine itself */
+  position: relative;
+}
+
+.mine::before {
+  content: "●"; /* Use a circle character for the bomb */
+  font-size: 1.5em;
+  color: black;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+
+/* Shake effect for mine explosion */
+@keyframes shake {
+  0% {
+    transform: translate(1px, 1px) rotate(0deg);
+  }
+  100% {
+    transform: translate(1px, -2px) rotate(-1deg);
+  }
+}
+
+/* Color the mine count numbers based on their values */
+.cell-1 {
+  color: blue;
+}
+
+.cell-2 {
+  color: green;
+}
+
+.cell-3 {
+  color: red;
+}
+
+.cell-4 {
+  color: darkblue;
+}
+
+.cell-5 {
+  color: brown;
+}
+
+.cell-6 {
+  color: cyan;
+}
+
+.cell-7 {
+  color: black;
+}
+
+.cell-8 {
+  color: gray;
+}
+
+/* Button and general styling */
+button {
+  background-color: #4CAF50;
+  color: white;
+  padding: 10px 20px;
+  text-align: center;
+  font-size: 1.2em;
+  margin: 12px;
+  border: none;
+  cursor: pointer;
+  transition: background-color 0.3s ease;
+} 
+
+button:hover {
+  background-color: #45a049;
+}
+
+.row {
+  display: flex;
+}
+
+body {
+  background: #BDBDBD;
+  color: #333333;
+  font-family: Arial, sans-serif;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  margin: 0;
+  overflow: hidden;
+}
+
+h1 {
+  text-align: center;
+  font-size: 2vw;
+  font-weight: bold;
+  margin-bottom: 20px;
+}
+
+.controls {
+  margin: 20px;
+}
+
+#grid-container {
+  display: flex;
+  justify-content: center;
+  width: 100%;
+  max-height: 80vh;
+  overflow: auto;
+}
+
+#grid {
+  border: 2px solid #333;
+  background: #A0A0A0;
+  table-layout: fixed;
+  border-spacing: 0;
+}
+
+#grid tr {
+  display: flex;
+}
+
+#grid td {
+  border: 2px solid #808080;
+  background: #D3D3D3;
+  text-align: center;
+  font-size: 18px;
+  cursor: pointer;
+  user-select: none;
+  width: 32px;
+  height: 32px;
+}
+
+#grid td.clicked {
+  background: #C0C0C0;
+  border-color: #A9A9A9;
+  pointer-events: none;
+}
+
+/* Mine cell styling */
+#grid td.mine {
+  background: #FF0000;
+  color: #FFFFFF;
+  font-weight: bold;
+}
+
+#grid td.wrong-flag {
+  background-color: yellow;
+  color: red;
+  font-weight: bold;
+}
+
+#grid td.flag {
+  background: #FFD700;
+  color: #FF0000;
+  font-weight: bold;
+}
+
+#grid td.hint-flag {
+  background: #00FF00;
+  color: #FFFFFF;
+  font-weight: bold;
+  pointer-events: none;
+}
+
+#win-lose-message {
+  display: none;
+  font-size: 3vw;
+  font-weight: bold;
+  color: #FF0000;
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background-color: white;
+  padding: 20px;
+  border: 3px solid black;
+  z-index: 1000;
+}
+
+#back-button {
+  position: absolute;
+  top: 20px;
+  left: 20px;
+  background-color: transparent;
+  border: none;
+  font-size: 2vw;
+  cursor: pointer;
+}
+
+#back-button:before {
+  content: "←";
+  font-size: 2.5vw;
+  color: #333;
+}
+
+/* Health bar styles for 1v1 mode */
+#health-bar {
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+#player-health, #opponent-health {
+  width: 300px;
+  height: 30px;
+  border: 2px solid black;
+  transition: width 0.5s, background-color 0.5s;
+  position: relative;
+}
+
+#player-health {
+  background-color: green;
+}
+
+#opponent-health {
+  background-color: blue;
+}
+
+#player-health-text, #opponent-health-text {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  top: 0;
+  left: 0;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  color: white;
+  font-weight: bold;
+}
+
+#timer, #round-indicator {
+  display: none;
+  font-size: 1.5vw;
+  margin-bottom: 20px;
+}

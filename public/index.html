@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MineVersus</title>
+    <link rel="stylesheet" href="App.css">
+</head>
+<body>
+    <div id="landing">
+        <h1>Welcome to Minesweeper</h1>
+        <button onclick="navigateToSinglePlayer()">Single Player</button>
+        <button onclick="navigateTo1v1()">1v1 Multiplayer</button>
+    </div>
+
+    <script>
+        function navigateToSinglePlayer() {
+            window.location.href = "singlePlayerMode.html";
+        }
+
+        function navigateTo1v1() {
+            window.location.href = "1v1Mode.html";
+        }
+    </script>
+</body>
+</html>
