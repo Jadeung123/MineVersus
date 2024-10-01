@@ -1,8 +1,16 @@
 const mongoose = require('mongoose');
+require('dotenv').config();
+
+const mongoURI = process.env.MONGO_URI;
+
+if (!mongoURI) {
+    console.error("MongoDB connection string is missing!");
+    process.exit(1); // Exit the process if MONGO_URI is not set
+  }
 
 const connectDB = async () => {
     try {
-        await mongoose.connect('mongodb://localhost:27017/minesweeperDB', {
+        await mongoose.connect(mongoURI, {
             useNewUrlParser: true,
             useUnifiedTopology: true,
         });
