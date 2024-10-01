@@ -10,7 +10,7 @@ const Player = require('./models/Player');
 const Game = require('./models/Game');
 
 const app = express();
-const port = process.env.PORT;
+const port = process.env.PORT || 3000;  // Use the default port if `PORT` is not set
 
 // Middleware
 app.use(bodyParser.json());
@@ -28,10 +28,15 @@ const wss = new WebSocket.Server({ server });
 
 let waitingPlayer = null;
 
+// Helper function to broadcast data to both players
+function broadcastToPlayers(player1, player2, message) {
+    player1.send(JSON.stringify(message));
+    player2.send(JSON.stringify(message));
+}
+
 wss.on('connection', (ws) => {
     let opponent = null;
-    let playerStartTime = null;
-    let boardSize = 5; // Start with 5x5 board size for both players
+    let boardSize = 5; // Start with a 5x5 board size
     let round = 1; // Initialize round counter
 
     ws.on('message', (message) => {
@@ -49,10 +54,6 @@ wss.on('connection', (ws) => {
                 // Set both players as opponents
                 player1.opponent = player2;
                 player2.opponent = player1;
-
-                // Set the start time for both players
-                player1.startTime = Date.now();
-                player2.startTime = Date.now();
 
                 waitingPlayer = null;
 
@@ -79,12 +80,12 @@ function setupPlayerCommunication(player, opponent, boardSize, round) {
     player.on('message', (message) => {
         const data = JSON.parse(message);
 
-        // Broadcast move or flag action to the opponent
+        // Forward move or flag action to the opponent
         if (data.type === "move") {
             opponent.send(message);
         }
 
-        // Handle board cleared logic (new feature)
+        // Handle board cleared logic
         if (data.type === "boardCleared") {
             const damage = 15; // Arbitrary damage value for the losing player
             opponent.send(JSON.stringify({ type: "roundLost", damage }));

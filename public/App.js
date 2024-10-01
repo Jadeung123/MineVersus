@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import io from 'socket.io-client';
 
-const socket = io('https://mineversus-a27cf5ba45b1.herokuapp.com'); // Adjust to your server URL
+const socket = io('https://mineversus-a27cf5ba45b1.herokuapp.com'); // Ensure this is your correct URL
 
 const App = () => {
   const [gameState, setGameState] = useState(null);
@@ -63,7 +63,7 @@ const App = () => {
     } catch (err) {
         console.error('Error creating players:', err.message);
     }
-};
+  };
 
 
   const startGame = async () => {
