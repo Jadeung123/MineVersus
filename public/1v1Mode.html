@@ -167,7 +167,7 @@
             document.getElementById("hint-button").style.display = "none";
             document.getElementById("heal-button").style.display = "none";
 
-            socket = new WebSocket('ws://localhost:3000');
+            socket = new WebSocket('wss://mineversus-a27cf5ba45b1.herokuapp.com');
             socket.onopen = () => {
                 socket.send(JSON.stringify({ type: "joinQueue" }));
             };
