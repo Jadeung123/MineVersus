@@ -10,7 +10,7 @@ const Player = require('./models/Player');
 const Game = require('./models/Game');
 
 const app = express();
-const port = process.env.PORT || 3000;
+const port = process.env.PORT;
 
 // Middleware
 app.use(bodyParser.json());
