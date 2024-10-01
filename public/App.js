@@ -1,16 +1,22 @@
 import React, { useEffect, useState } from 'react';
 import io from 'socket.io-client';
 
-const socket = io('https://mineversus-a27cf5ba45b1.herokuapp.com'); // Ensure this is your correct URL
+const socket = io('https://mineversus-a27cf5ba45b1.herokuapp.com');
 
 const App = () => {
   const [gameState, setGameState] = useState(null);
-  const [gameId, setGameId] = useState('game1'); // Example game ID
+  const [gameId, setGameId] = useState('game1');
   const [bombCooldown, setBombCooldown] = useState(false);
   let player1Id, player2Id;
 
   useEffect(() => {
-    socket.emit('joinGame', gameId);
+    // Emit to join the queue for a match
+    socket.emit('joinQueue');
+
+    socket.on('matchFound', (data) => {
+      console.log('Match found, starting game:', data);
+      startGame();
+    });
 
     socket.on('gameUpdate', (state) => {
       setGameState(state);
@@ -18,8 +24,9 @@ const App = () => {
 
     return () => {
       socket.off('gameUpdate');
+      socket.off('matchFound');
     };
-  }, [gameId]);
+  }, []);
 
   const createPlayers = async () => {
     try {
@@ -68,12 +75,12 @@ const App = () => {
 
   const startGame = async () => {
     try {
-      await createPlayers(); // Ensure players are created
+      await createPlayers();
 
       const response = await fetch('/game', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ player1Id: player1Id, player2Id: player2Id }) // Use actual ObjectIds
+        body: JSON.stringify({ player1Id: player1Id, player2Id: player2Id })
       });
 
       if (!response.ok) {
@@ -94,7 +101,7 @@ const App = () => {
     if (!bombCooldown) {
       socket.emit('dropBomb', gameId);
       setBombCooldown(true);
-      setTimeout(() => setBombCooldown(false), 5000); // Example 5-second cooldown
+      setTimeout(() => setBombCooldown(false), 5000);
     }
   };
 

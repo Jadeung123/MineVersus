@@ -10,7 +10,7 @@ const Player = require('./models/Player');
 const Game = require('./models/Game');
 
 const app = express();
-const port = process.env.PORT || 3000;  // Use the default port if `PORT` is not set
+const port = process.env.PORT || 3000;
 
 // Middleware
 app.use(bodyParser.json());
@@ -36,36 +36,38 @@ function broadcastToPlayers(player1, player2, message) {
 
 wss.on('connection', (ws) => {
     let opponent = null;
-    let boardSize = 5; // Start with a 5x5 board size
-    let round = 1; // Initialize round counter
+    let boardSize = 5;
+    let round = 1;
 
+    // Player connected, waiting for a match
     ws.on('message', (message) => {
         const data = JSON.parse(message);
 
         if (data.type === "joinQueue") {
-            if (waitingPlayer) {
+            if (waitingPlayer && waitingPlayer !== ws) {
                 // Match found
                 const player1 = waitingPlayer;
                 const player2 = ws;
 
-                player1.send(JSON.stringify({ type: "matchFound", isPlayer1: true, boardSize, round }));
-                player2.send(JSON.stringify({ type: "matchFound", isPlayer1: false, boardSize, round }));
-
-                // Set both players as opponents
                 player1.opponent = player2;
                 player2.opponent = player1;
 
+                player1.send(JSON.stringify({ type: "matchFound", isPlayer1: true, boardSize, round }));
+                player2.send(JSON.stringify({ type: "matchFound", isPlayer1: false, boardSize, round }));
+
                 waitingPlayer = null;
 
-                // Set up message forwarding between players
+                // Set up communication between players
                 setupPlayerCommunication(player1, player2, boardSize, round);
                 setupPlayerCommunication(player2, player1, boardSize, round);
             } else {
+                console.log("No waiting player, adding to queue...");
                 waitingPlayer = ws;
             }
         }
     });
 
+    // Handle connection closing
     ws.on('close', () => {
         if (waitingPlayer === ws) {
             waitingPlayer = null;
@@ -73,6 +75,11 @@ wss.on('connection', (ws) => {
         if (opponent) {
             opponent.send(JSON.stringify({ type: "opponentLeft" }));
         }
+    });
+
+    // Handle connection errors
+    ws.on('error', (err) => {
+        console.error('WebSocket error:', err);
     });
 });
 
@@ -87,44 +94,36 @@ function setupPlayerCommunication(player, opponent, boardSize, round) {
 
         // Handle board cleared logic
         if (data.type === "boardCleared") {
-            const damage = 15; // Arbitrary damage value for the losing player
+            const damage = 15;
             opponent.send(JSON.stringify({ type: "roundLost", damage }));
             player.send(JSON.stringify({ type: "roundWon", damage }));
 
-            // Increment round and board size for the next round
             round += 1;
-            boardSize += 1; // Ensure increment by 1
+            boardSize += 1;
 
-            // Reset round state and start the next round
             resetRoundState(player, opponent);
             player.send(JSON.stringify({ type: "nextRound", boardSize, round }));
             opponent.send(JSON.stringify({ type: "nextRound", boardSize, round }));
         }
 
-        // Handle round lost logic
         if (data.type === "roundLost") {
             const playerTime = data.time;
             const opponentTime = Date.now() - opponent.startTime;
 
-            // Damage calculation
             const baseDamage = 10;
             const timeMultiplier = 5;
             const timeDifference = Math.abs(playerTime - opponentTime);
             const damage = Math.round(baseDamage + (timeDifference / 1000) * timeMultiplier);
 
-            // Only apply damage once and avoid additional triggers
             if (!player.roundLost) {
                 player.roundLost = true;
                 player.send(JSON.stringify({ type: "applyDamage", damage }));
                 opponent.send(JSON.stringify({ type: "roundWon", damage }));
 
-                // Increment the round counter for both players
                 round += 1;
 
-                // Reset the roundLost state for both players
                 resetRoundState(player, opponent);
 
-                // Increment the board size for the next round
                 boardSize += 1;
 
                 // Start the next round for both players with the same board size and round number
