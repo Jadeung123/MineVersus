@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import io from 'socket.io-client';
 
-const socket = io('https://mineversus-a27cf5ba45b1.herokuapp.com');
+const socket = io('wss://mineversus-a27cf5ba45b1.herokuapp.com');
 
 const App = () => {
   const [gameState, setGameState] = useState(null);
