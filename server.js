@@ -109,7 +109,7 @@ function setupPlayerCommunication(player, opponent, boardSize, round) {
             //const opponentTime = Date.now() - opponent.startTime;
 
             const baseDamage = 10;
-            const damage = Math.round(baseDamage + (playerTime/1000));
+            const damage = Math.round(baseDamage + (playerTime/5000));
 
             if (!player.roundLost) {
                 player.roundLost = true;
