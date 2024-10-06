@@ -106,6 +106,7 @@ function setupPlayerCommunication(player, opponent, boardSize, round) {
 
         if (data.type === "roundLost") {
             const playerTime = data.time;
+            console.log(playerTime);
             //const opponentTime = Date.now() - opponent.startTime;
 
             const baseDamage = 10;
